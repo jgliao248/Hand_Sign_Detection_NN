@@ -1,5 +1,4 @@
-from enum import Enum
-
+import cv2
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -41,7 +40,7 @@ class SignLanguageDataset(Dataset):
         """
         labels = df["label"]
         x = df.drop(["label"], axis=1)
-        x1 = np.array(x)
+        x1 = np.array(x, dtype="float32")
         n = len(df.index)
         images = x1.reshape(n, 28, 28)
         return labels, images
@@ -52,8 +51,10 @@ class SignLanguageDataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-
-        img = self.data[idx]
+        img = cv2.resize(self.data[idx], 224, 224)
+        img = torch.FloatTensor(img)
+        img = img.unsqueeze(0)
+        img /= 255.
         label = self.labels[idx]
 
         if self.transform:
@@ -95,6 +96,7 @@ def main():
     #print(create_labels_dict())
     dataset = SignLanguageDataset(TRAIN_PATH, DATA_DIRECTORY_PATH)
     dataset.show_images()
+    print(dataset)
 
 if __name__ == '__main__':
     main()

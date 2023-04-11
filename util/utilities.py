@@ -15,7 +15,6 @@ def build_absolute_path(target: str):
     return c.PROJECT_DIRECTORY + '/' + target
 
 
-
 def main():
 
     print(build_absolute_path(c.NETWORK_DIRECTORY + c.NETWORK_MODEL))
