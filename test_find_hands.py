@@ -2,6 +2,12 @@ import cv2
 import mediapipe as mp
 import time
 import numpy as np
+import torch
+
+import SignLanguageDataset as data
+from Network.network import MyNetwork
+
+import constants as c
 
 PADDING = 30
 class handDetector():
@@ -34,12 +40,24 @@ class handDetector():
                 cv2.rectangle(img, [pts[0], pts[1]], [pts[2], pts[3]], (255, 0, 255))
         return img
 
+    def crop(self, img):
+
+        pass
+
     def export_hands(self, img):
         if self.results.multi_hand_landmarks:
             for handLms in self.results.multi_hand_landmarks:
 
                 pts = self.get_bbox_coordinates(handLms, img.shape)
-                cropped_image = img[pts[1]:pts[3], pts[0]:pts[2]]
+                width = pts[2] - pts[0]
+                length = pts[3] - pts[1]
+                l = length // 2
+                if width >= length:
+                    l = width // 2
+
+                center_x, center_y = (pts[2] + pts[0]) // 2, (pts[3] + pts[1]) // 2
+
+                cropped_image = img[(center_y - l):(center_y + l), (center_x - l):(center_x + l)]
                 return cropped_image
         else:
             return None
@@ -83,6 +101,34 @@ def main():
     detector = handDetector()
     key = ''
 
+    learning_rate = 1e-3
+
+    maps_label = data.create_labels_dict()
+
+    model_path = c.NETWORK_MODEL_PATH
+    optimizer_path = c.NETWORK_OPTIMIZER_PATH
+
+    model = MyNetwork()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    model.load_state_dict(torch.load(model_path))
+    optimizer.load_state_dict(torch.load(optimizer_path))
+
+
+    train_data = data.SignLanguageDataset(data.TRAIN_PATH, data.DATA_DIRECTORY_PATH)
+    print(train_data[0])
+    mean = np.full((224, 224), train_data.mean)
+    print(mean)
+    #print(train_data.std)
+
+    std = np.full((224, 224), np.mean(train_data.std))
+    print(std)
+
+
+    model.eval()
+
+    cv2.namedWindow("hand", cv2.WINDOW_AUTOSIZE)
+
     while key != "q":
         success, img = cap.read()
         img_copy = img.copy()
@@ -104,6 +150,17 @@ def main():
             break
         if key == 32: # space key
             cv2.imwrite("test.png", detector.export_hands(img))
+        if key == 104 and success: # h key
+            img = cv2.cvtColor(detector.export_hands(img), cv2.COLOR_BGR2GRAY)
+            img = train_data.process_image(img)
+
+            print(img)
+
+
+            with torch.no_grad():
+                output = model(img.unsqueeze(0))
+                print(maps_label.get(output.data.max(1, keepdim=True)[1][0].item()))
+
 
 
 

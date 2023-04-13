@@ -17,6 +17,8 @@ TEST_PATH = util.build_absolute_path(const.DATA_DIRECTORY + const.TEST_DATA_FILE
 class SignLanguageDataset(Dataset):
 
     def __init__(self, csv_file, root_dir, transform=None):
+        self.std = None
+        self.mean = None
         try:
             df = pd.read_csv(csv_file)
 
@@ -40,9 +42,21 @@ class SignLanguageDataset(Dataset):
         """
         labels = df["label"]
         x = df.drop(["label"], axis=1)
+        self.mean = np.average(x)
+
+        self.std = np.std(x)
+        x -= self.mean
+
+        x /= self.std
+
+
+
         x1 = np.array(x, dtype="float32")
+
+
         n = len(df.index)
         images = x1.reshape(n, 28, 28)
+        #print(images)
         return labels, images
 
     def __len__(self):
@@ -51,10 +65,11 @@ class SignLanguageDataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        img = cv2.resize(self.data[idx], 224, 224)
+        img = cv2.resize(self.data[idx], (224, 224))
         img = torch.FloatTensor(img)
         img = img.unsqueeze(0)
         img /= 255.
+
         label = self.labels[idx]
 
         if self.transform:
@@ -73,6 +88,28 @@ class SignLanguageDataset(Dataset):
             plt.imshow(self.data[i], cmap="gray_r")
             plt.title("Ground Truth: {}".format(labels_map.get(self.labels[i])))
         plt.show()
+
+    def process_image(self, img):
+        img = cv2.resize(img, (28, 28))
+        cv2.imwrite("processed.png", img)
+        img = img.flatten()
+
+        img = img - self.mean
+
+        img = img / self.std
+        img = np.array(img, dtype="float32")
+
+        n = len(img)
+        img = img.reshape(28, 28)
+
+
+
+        img = cv2.resize(img, (224, 224))
+        img = torch.FloatTensor(img)
+        img = img.unsqueeze(0)
+        img /= 255.
+        return img
+
 
 
 def create_labels_dict():

@@ -19,32 +19,54 @@ class MyNetwork(nn.Module):
         """
         super().__init__()
         self.conv1 = nn.Sequential(
-            nn.Conv2d(1, 32, 3),   # 26 x 26
+            nn.Conv2d(1, 32, 5),   # 220 x 220
+
+            nn.MaxPool2d(2),        # 110 x 110
             nn.ReLU(),
-            nn.MaxPool2d(2),        # 13 x 13
-            nn.Dropout(0.2),
+            #nn.Dropout(0.2),
             nn.BatchNorm2d(32)
         )
 
         self.conv2 = nn.Sequential(
-            nn.Conv2d(32, 64, 3),   # 11 x 11
+            nn.Conv2d(32, 64, 5),   # 106 x 106
+
+            nn.MaxPool2d(2),        # 53 x 53
             nn.ReLU(),
-            nn.MaxPool2d(2),        # 5 x 5
-            nn.Dropout(0.2),
+            #nn.Dropout(0.2),
             nn.BatchNorm2d(64)
         )
 
         self.conv3 = nn.Sequential(
-            nn.Conv2d(64, 128, 3),  # 3 x 3
+            nn.Conv2d(64, 128, 3),  # 51 x 51
+
+            nn.MaxPool2d(2),  # 25 x 25
             nn.ReLU(),
-            nn.Dropout(0.2),
+            #nn.Dropout(0.2),
             nn.BatchNorm2d(128)
         )
 
-        self.fc1 = nn.Sequential(
-            nn.Linear(128 * 3 * 3, 256),
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(128, 256, 3),  # 23 x 23
+
+            nn.MaxPool2d(2),  # 11 x 11
             nn.ReLU(),
-            nn.Dropout(0.2)
+            #nn.Dropout(0.2),
+            nn.BatchNorm2d(256)
+        )
+
+        self.conv5 = nn.Sequential(
+            nn.Conv2d(256, 512, 3),  # 9 x 9
+
+            nn.MaxPool2d(2),  # 4 x 4
+            nn.ReLU(),
+            #nn.Dropout(0.2),
+            nn.BatchNorm2d(512)
+        )
+
+        self.fc1 = nn.Sequential(
+            nn.Linear(512 * 4 * 4, 256),
+
+            nn.Dropout(0.1)
 
         )
         self.fc2 = nn.Linear(256, 25)
@@ -60,12 +82,14 @@ class MyNetwork(nn.Module):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
 
         x = self.flatten(x)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 
-        return F.log_softmax(x)
+        return x
 
 
 def train(network_name: str, network: MyNetwork, train_losses: list, train_counts: list,
@@ -124,15 +148,16 @@ def test(network, test_loader, test_losses):
         for data, target in test_loader:
             output = network(data)
             test_loss += F.nll_loss(output, target, size_average=False).item()
-            pred = output.data.max(1, keepdim=True)[1]
-            correct += pred.eq(target.data.view_as(pred)).sum()
+            pred = output.dataset.max(1, keepdim=True)[1]
+            correct += pred.eq(target.dataset.view_as(pred)).sum()
     test_loss /= len(test_loader.dataset)
     test_losses.append(test_loss)
+    acc = 100. * correct / len(test_loader.dataset)
     print('\nTest set: Avg. loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+        acc))
 
-    return test_losses
+    return test_losses, acc
 
 
 def graph_results(train_losses: list, train_counter: list, test_losses: list, test_counter: list):
@@ -168,7 +193,52 @@ def main():
     )
 
 
+    print(device)
 
+    random_seed = 1
+    torch.backends.cudnn.enabled = False
+    torch.manual_seed(random_seed)
+
+    train_loader = torch.utils.data.DataLoader(
+        data.SignLanguageDataset(data.TRAIN_PATH, data.DATA_DIRECTORY_PATH), batch_size=batch_size_train, num_workers=4, shuffle=True)
+
+    test_loader = torch.utils.data.DataLoader(
+        data.SignLanguageDataset(data.TEST_PATH, data.DATA_DIRECTORY_PATH), batch_size=batch_size_test, shuffle=True)
+
+    network = MyNetwork().to("cpu")
+    optimizer = optim.SGD(network.parameters(), lr=learning_rate,
+                          momentum=momentum)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.5, verbose=True, min_lr=1e-6)
+    train_losses = []
+    train_counter = []
+    test_losses = []
+    test_counter = [i * len(train_loader.dataset) for i in range(n_epochs + 1)]
+
+    test_losses = test(network, test_loader, test_losses)
+
+    for epoch in range(1, n_epochs + 1):
+        train_losses, train_counter = train("model_name", network, train_losses, train_counter, train_loader, optimizer,
+                                            epoch, batch_size_train)
+
+        test_losses, acc = test(network, test_loader, test_losses)
+        scheduler.step(acc)
+
+    graph_results(train_losses, train_counter, test_losses, test_counter)
+
+def continue_training():
+    n_epochs = 10
+    batch_size_train = 64
+    batch_size_test = 1000
+    learning_rate = 0.001
+    momentum = 0.5
+
+    device = (
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps"
+        if torch.backends.mps.is_available()
+        else "cpu"
+    )
 
     random_seed = 1
     torch.backends.cudnn.enabled = False
@@ -184,6 +254,10 @@ def main():
     optimizer = optim.SGD(network.parameters(), lr=learning_rate,
                           momentum=momentum)
 
+    model_path = c.NETWORK_MODEL_PATH
+    optimizer_path = c.NETWORK_OPTIMIZER_PATH
+    network.load_state_dict(torch.load(model_path))
+    optimizer.load_state_dict(torch.load(optimizer_path))
     train_losses = []
     train_counter = []
     test_losses = []
@@ -199,11 +273,6 @@ def main():
 
     graph_results(train_losses, train_counter, test_losses, test_counter)
 
-def testing():
-    batch_size_train = 64
-    train_loader = torch.utils.data.DataLoader(
-        data.SignLanguageDataset(data.TRAIN_PATH, data.DATA_DIRECTORY_PATH, torchvision.transforms.Compose([
-            torchvision.transforms.ToTensor()])), batch_size=batch_size_train, shuffle=True)
-    train_loader.dataset.type
+
 if __name__ == '__main__':
     main()
