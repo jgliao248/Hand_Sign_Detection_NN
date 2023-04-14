@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch import nn
+from torch import nn, optim
 
 import Network.network
 from Network.network import MyNetwork
@@ -53,6 +53,7 @@ def main():
     learning_rate = 1e-3
     start_epoch = 0
     end_epoch = 5
+    momentum = 0.5
 
     train_losses = []
     train_counter = []
@@ -61,11 +62,14 @@ def main():
 
 
     criterion = nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate,
+                          momentum=momentum)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, factor=0.5, verbose=True, min_lr=1e-6)
     if checkpoint:
         model.load_state_dict(torch.load(checkpoint)['state_dict'])
         start_epoch = torch.load(checkpoint)['epoch']
+
+
     for epoch in range(start_epoch, end_epoch + 1):
         for i, (images, labels) in enumerate(val_loader):
             outputs = model(images.to(device))

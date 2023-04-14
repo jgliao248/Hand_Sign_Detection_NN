@@ -17,6 +17,13 @@ DATA_DIRECTORY = "data/"
 TRAIN_DATA_FILE = "sign_mnist_train.csv"
 TEST_DATA_FILE = "sign_mnist_test.csv"
 
+# landmark based data files
+RAW_DATA_DIR = "asl_dataset/"
+ALPHA_TRAIN_FILE = "alpha_train_file.csv"
+NUMERIC_TRAIN_FILE = "numeric_train_file.csv"
+ALPHA_TEST_FILE = "alpha_test_file.csv"
+NUMERIC_TEST_FILE = "numeric_test_file.csv"
+
 
 NETWORK_DIRECTORY = "network/"
 NETWORK_MODEL = "model.pth"
@@ -29,6 +36,8 @@ UTIL_DIRECTORY = "util/"
 
 # network constants
 LOG_INTERVAL = 10
+
+PADDING = 30
 
 
 

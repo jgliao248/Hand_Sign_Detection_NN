@@ -132,8 +132,8 @@ def create_labels_dict():
 def main():
     #print(create_labels_dict())
     dataset = SignLanguageDataset(TRAIN_PATH, DATA_DIRECTORY_PATH)
-    dataset.show_images()
-    print(dataset)
+    #dataset.show_images()
+    print(dataset[0])
 
 if __name__ == '__main__':
     main()

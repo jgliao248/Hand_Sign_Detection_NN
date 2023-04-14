@@ -3,6 +3,7 @@ import mediapipe as mp
 import time
 import numpy as np
 import torch
+from torch import optim
 
 import SignLanguageDataset as data
 from Network.network import MyNetwork
@@ -102,6 +103,7 @@ def main():
     key = ''
 
     learning_rate = 1e-3
+    momentum = 0.5
 
     maps_label = data.create_labels_dict()
 
@@ -109,7 +111,8 @@ def main():
     optimizer_path = c.NETWORK_OPTIMIZER_PATH
 
     model = MyNetwork()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate,
+                          momentum=momentum)
 
     model.load_state_dict(torch.load(model_path))
     optimizer.load_state_dict(torch.load(optimizer_path))

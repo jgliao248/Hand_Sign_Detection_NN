@@ -23,7 +23,7 @@ class MyNetwork(nn.Module):
 
             nn.MaxPool2d(2),        # 110 x 110
             nn.ReLU(),
-            #nn.Dropout(0.2),
+            #nn.Dropout(0.4),
             nn.BatchNorm2d(32)
         )
 
@@ -32,7 +32,7 @@ class MyNetwork(nn.Module):
 
             nn.MaxPool2d(2),        # 53 x 53
             nn.ReLU(),
-            #nn.Dropout(0.2),
+            #nn.Dropout(0.4),
             nn.BatchNorm2d(64)
         )
 
@@ -41,7 +41,7 @@ class MyNetwork(nn.Module):
 
             nn.MaxPool2d(2),  # 25 x 25
             nn.ReLU(),
-            #nn.Dropout(0.2),
+            #nn.Dropout(0.4),
             nn.BatchNorm2d(128)
         )
 
@@ -50,7 +50,7 @@ class MyNetwork(nn.Module):
 
             nn.MaxPool2d(2),  # 11 x 11
             nn.ReLU(),
-            #nn.Dropout(0.2),
+            #nn.Dropout(0.4),
             nn.BatchNorm2d(256)
         )
 
@@ -59,14 +59,14 @@ class MyNetwork(nn.Module):
 
             nn.MaxPool2d(2),  # 4 x 4
             nn.ReLU(),
-            #nn.Dropout(0.2),
+            #nn.Dropout(0.4),
             nn.BatchNorm2d(512)
         )
 
         self.fc1 = nn.Sequential(
             nn.Linear(512 * 4 * 4, 256),
 
-            nn.Dropout(0.1)
+            nn.Dropout(0.4)
 
         )
         self.fc2 = nn.Linear(256, 25)
@@ -178,7 +178,7 @@ def graph_results(train_losses: list, train_counter: list, test_losses: list, te
     plt.show()
 
 def main():
-    n_epochs = 20
+    n_epochs = 10
     batch_size_train = 64
     batch_size_test = 1000
     learning_rate = 0.001
