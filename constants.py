@@ -23,7 +23,8 @@ ALPHA_TRAIN_FILE = "alpha_train_file.csv"
 NUMERIC_TRAIN_FILE = "numeric_train_file.csv"
 ALPHA_TEST_FILE = "alpha_test_file.csv"
 NUMERIC_TEST_FILE = "numeric_test_file.csv"
-
+MAP_LABEL_FILE_PATH = PROJECT_DIRECTORY + "/" + DATA_DIRECTORY + "map_label.txt"
+DATABASE_PATH = PROJECT_DIRECTORY + "/" + DATA_DIRECTORY + "database.csv"
 
 NETWORK_DIRECTORY = "network/"
 NETWORK_MODEL = "model.pth"
@@ -38,6 +39,9 @@ UTIL_DIRECTORY = "util/"
 LOG_INTERVAL = 10
 
 PADDING = 30
+
+# image
+TOTAL_IMAGES = 50
 
 
 

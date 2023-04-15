@@ -1,4 +1,5 @@
 import os
+from _csv import writer
 
 import cv2
 import numpy as np
@@ -13,6 +14,8 @@ from LandmarkDetector import LandmarkDetector
 from util import utilities
 
 
+
+
 class LandmarkDataset(Dataset):
 
     def __init__(self, csv_file, root_dir, transform=None):
@@ -20,7 +23,7 @@ class LandmarkDataset(Dataset):
         try:
             df = pd.read_csv(csv_file)
 
-            self.labels, self.data = self.process_df(df)
+            self.labels, self.x_data, self.y_data, self.z_data = self.process_df(df)
 
         except FileExistsError:
             print("Data file not found. Download the appropriate csv files")
@@ -36,22 +39,35 @@ class LandmarkDataset(Dataset):
         :return:
         """
         labels = df["label"]
-        x = df.drop(["label"], axis=1)
+        labels = np.array(labels, dtype="int")
+        n = len(labels)
 
-        x1 = np.array(x, dtype="float32")
+        df1 = df.drop(["label"], axis=1)
 
-        # print(images)
-        return labels, x1
+        c = len(df1.columns) // 3
+        x_comp = df1.columns[::3]
+        y_comp = df1.columns[1::3]
+        z_comp = df1.columns[2::3]
+
+        x = np.array(df1[x_comp], dtype="float32")
+        y = np.array(df1[y_comp], dtype="float32")
+        z = np.array(df1[z_comp], dtype="float32")
+
+
+        #print(images)
+        return labels, x, y, z
 
     def __len__(self):
-        return len(self.data)
+        return len(self.x_data)
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        landmarks = torch.FloatTensor(self.data[idx])
-        landmarks = landmarks.unsqueeze(0)
+        entry = np.array([self.x_data[idx], self.y_data[idx], self.z_data[idx]])
+
+        landmarks = torch.FloatTensor(entry)
+        landmarks = landmarks
 
         label = self.labels[idx]
 
@@ -105,6 +121,33 @@ def create_df():
     return df
 
 
+def get_map_label(file=const.MAP_LABEL_FILE_PATH, is_reverse=False):
+    map_label = {}
+    print(file)
+    with open(file) as file_data:
+        for i, line in enumerate(file_data):
+            if is_reverse:
+                map_label[i] = line.strip()
+            else:
+                map_label[line.strip()] = i
+    return map_label
+
+
+def append_data(label: str, pts: list):
+    from_labels = get_map_label()
+    int_key = from_labels.get(label)
+    if int_key is None:
+        with open(const.MAP_LABEL_FILE_PATH, 'a') as file:
+            file.writelines(label + "\n")
+            file.close()
+        int_key = len(from_labels)
+
+    with open(const.DATABASE_PATH, 'a') as file:
+        entry = [int_key] + pts
+        w = writer(file)
+        w.writerow(entry)
+        file.close()
+
 def create_csv(directory=const.RAW_DATA_DIR):
     """
     Generates a csv files of the images within the given directory. The data contains the hand landmarks
@@ -131,6 +174,8 @@ def create_csv(directory=const.RAW_DATA_DIR):
     train_numeric = create_df()
     test_numeric = create_df()
 
+    map_label = get_map_label()
+
     for sub in raw_data:
         if len(sub) != 1 or sub == ".DS_Store":
             continue
@@ -146,14 +191,20 @@ def create_csv(directory=const.RAW_DATA_DIR):
                 continue
             print(img_path)
             print("sub: ", sub)
-            print("ord: ", ord(sub))
-            entry = get_df_entry(lst, ord(sub))
+            # print("ord: ", ord(sub))
+            label = map_label.get(sub)
+            print("label: ", label)
+            if (label == None):
+                continue
+
+            entry = get_df_entry(lst, map_label.get(sub))
 
             # test set alpha
             if target_string in img_path:
                 # test set numeric
                 if sub in numerics:
                     print("test numeric")
+
                     test_numeric = pd.concat([test_numeric, entry], ignore_index=True)
                     continue
                 print("test alpha")
@@ -175,6 +226,68 @@ def create_csv(directory=const.RAW_DATA_DIR):
     train_numeric.to_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + const.NUMERIC_TRAIN_FILE), index=False)
     test_numeric.to_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + const.NUMERIC_TEST_FILE), index=False)
 
+def create_csv2(directory=const.RAW_DATA_DIR):
+    """
+    Generates a csv files of the images within the given directory. The data contains the hand landmarks
+    of several American Sign Language alphabet and numbers.
+
+    There will be 4 csv files that will be generated:
+    - alphabet test
+    - alphabet train
+    - numeric test
+    - numeric train
+    :param directory: the directory path string for the images
+    :return: none
+    """
+
+    detector = LandmarkDetector(True, 1, 0.2, 0.2)
+    raw_data_path = utilities.build_absolute_path(const.DATA_DIRECTORY + directory)
+    raw_data = os.listdir(raw_data_path)
+
+    target_string = "hand5"  # test data sub set
+
+    train = create_df()
+    test = create_df()
+
+    map_label = get_map_label()
+
+    for sub in raw_data:
+        label = map_label.get(sub)
+        if label == None:
+            continue
+        folder_path = raw_data_path + sub + "/"
+        # print(sub)
+        for img in os.listdir(folder_path):
+            # build image path and load the image
+            img_path = folder_path + img
+
+            img = cv2.imread(img_path)
+            lst = detector.get_points(img)
+            if len(lst) == 0:
+                continue
+            print(img_path)
+            print("sub: ", sub)
+            # print("ord: ", ord(sub))
+
+            #print("label: ", label)
+
+
+            entry = get_df_entry(lst, map_label.get(sub))
+
+            # test set alpha
+            if target_string in img_path:
+
+                print("test")
+                test = pd.concat([test, entry], ignore_index=True)
+                continue
+
+            train = pd.concat([train, entry], ignore_index=True)
+
+    # export to csv files
+    test.to_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + "test.csv"), index=False)
+    train.to_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + "train.csv"), index=False)
+
+
 def find_csv():
 
     a_train_exists = os.path.exists(utilities.build_absolute_path(const.DATA_DIRECTORY + const.ALPHA_TRAIN_FILE))
@@ -188,12 +301,14 @@ def find_csv():
         return
     print("All csv files exist")
 
-
-# def main():
-#     dataset = LandmarkDataset(utilities.build_absolute_path(const.DATA_DIRECTORY + const.ALPHA_TRAIN_FILE),
-#                               utilities.build_absolute_path(const.DATA_DIRECTORY))
 #
-#     print(dataset.__getitem__(0))
+# def main():
+#     lst = [0, 2, 3, 4, 5]
+#     label = "fuck"
+#     append_data(label, lst)
+#
+#
+#
 #
 # if __name__ == '__main__':
 #     main()

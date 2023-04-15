@@ -133,7 +133,10 @@ def main():
     #print(create_labels_dict())
     dataset = SignLanguageDataset(TRAIN_PATH, DATA_DIRECTORY_PATH)
     #dataset.show_images()
-    print(dataset[0])
+    data = torch.utils.data.DataLoader(dataset, batch_size=128, num_workers=4, shuffle=True)
+    x_train, y = next(iter(data))
+    print(x_train.shape)
+    print(y.shape)
 
 if __name__ == '__main__':
     main()

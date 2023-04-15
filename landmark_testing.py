@@ -1,4 +1,5 @@
 import os
+from threading import Thread
 
 import cv2
 import mediapipe as mp
@@ -8,230 +9,217 @@ import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 
+from LandmarkDetector import LandmarkDetector
+from data.landmark_dataset import LandmarkDataset, get_map_label, append_data
 
-import SignLanguageDataset as data
-from Network.network import MyNetwork
-
-import constants as c
+import constants as const
 from util import utilities
-import seaborn as sns
+import tensorflow as tf
 
-from torch import nn
-import torch.nn.functional as F
-import torch.optim as optim
-
-PADDING = 30
+from sklearn.model_selection import train_test_split
 
 
-
-image_path = "/Users/jgliao/Library/CloudStorage/OneDrive-Personal/Documents/Grad School/Classes/CS 5330 - Computer Vision/Homework/Final Project/data/asl_dataset/y/hand1_y_bot_seg_1_cropped.jpeg"
-class handDetector():
-    def __init__(self, mode=False, maxHands=2, detectionCon=0.5, trackCon=0.5):
-        self.mode = mode
-        self.maxHands = maxHands
-        self.detectionCon = detectionCon
-        self.trackCon = trackCon
-
-        self.mpHands = mp.solutions.hands
-        self.hands = self.mpHands.Hands(static_image_mode=self.mode,
-                                        max_num_hands=self.maxHands,
-                                        min_detection_confidence=self.detectionCon,
-                                        min_tracking_confidence=self.trackCon)
-        self.mpDraw = mp.solutions.drawing_utils
-
-    def findHands(self, img, draw=True):
-        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        self.results = self.hands.process(imgRGB)
-        #print(self.results.multi_hand_landmarks)
-
-        if self.results.multi_hand_landmarks:
-            for handLms in self.results.multi_hand_landmarks:
-                if draw:
-                    self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
-
-            #self.mpDraw.draw_detection(img, self.results.multi_hand_landmarks)
-                pts = self.get_bbox_coordinates(handLms, img.shape)
-
-
-                cv2.rectangle(img, [pts[0], pts[1]], [pts[2], pts[3]], (255, 0, 255))
-
-
-        return img
-
-    def positionFinder(self, image, handNo=0, draw=True):
-        lmlist = []
-        if self.results.multi_hand_landmarks:
-            Hand = self.results.multi_hand_landmarks[handNo]
-            for id, lm in enumerate(Hand.landmark):
-                h, w, c = image.shape
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                lmlist.append([id, cx, cy])
-            if draw:
-                cv2.circle(image, (cx, cy), 15, (255, 0, 255), cv2.FILLED)
-
-        return lmlist
-
-    def crop(self, img):
-
-        pass
-
-    def export_hands(self, img):
-        if self.results.multi_hand_landmarks:
-            for handLms in self.results.multi_hand_landmarks:
-
-                pts = self.get_bbox_coordinates(handLms, img.shape)
-                width = pts[2] - pts[0]
-                length = pts[3] - pts[1]
-                l = length // 2
-                if width >= length:
-                    l = width // 2
-
-                center_x, center_y = (pts[2] + pts[0]) // 2, (pts[3] + pts[1]) // 2
-
-                cropped_image = img[(center_y - l):(center_y + l), (center_x - l):(center_x + l)]
-                return cropped_image
-        else:
-            return None
-
-    def get_points(self, img, handNo=0):
-
-        lst = []
-        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        self.results = self.hands.process(imgRGB)
-
-        if self.results.multi_hand_landmarks:
-            myHand = self.results.multi_hand_landmarks[handNo]
-            for id, lm in enumerate(myHand.landmark):
-                #print(id)
-                #print(lm)
-                lst.append((lm.x, lm.y, lm.z))
-
-
-        return lst
+model_path = const.PROJECT_DIRECTORY + "/" + const.NETWORK_DIRECTORY + "landmark_model.hdf5"
+optimizer_path = const.PROJECT_DIRECTORY + "/" + const.NETWORK_DIRECTORY + "landmark_optim.pth"
 
 
 
+def get_data():
+    # df_train = pd.read_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + "train.csv"))
+    # df_test = pd.read_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + "test.csv"))
 
+    df_train = pd.read_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + const.NUMERIC_TRAIN_FILE))
+    df_test = pd.read_csv(utilities.build_absolute_path(const.DATA_DIRECTORY + const.NUMERIC_TEST_FILE))
 
-    def get_bbox_coordinates(self, handLadmark, image_shape):
-        """
-        Get bounding box coordinates for a hand landmark.
-        Args:
-            handLadmark: A HandLandmark object.
-            image_shape: A tuple of the form (height, width).
-        Returns:
-            A tuple of the form (xmin, ymin, xmax, ymax).
-        """
-        all_x, all_y = [], []  # store all x and y points in list
-        for hnd in self.mpHands.HandLandmark:
-            all_x.append(int(handLadmark.landmark[hnd].x * image_shape[1]))  # multiply x by image width
-            all_y.append(int(handLadmark.landmark[hnd].y * image_shape[0]))  # multiply y by image height
+    X_train = np.array(df_train.drop(["label"], axis=1))
+    y_train = np.array(df_train["label"])
 
-        return min(all_x) - PADDING, min(all_y) - PADDING, max(all_x) + PADDING, max(all_y) + PADDING  # return as (xmin, ymin, xmax, ymax)
+    X_test = np.array(df_test.drop(["label"], axis=1))
+    y_test = np.array(df_test["label"])
 
-    def get_df_entry(self, lst, true_value):
+    return X_train, y_train, X_test, y_test
 
-        my_dict = {"value": true_value}
-        cords = ['x', 'y', 'z']
+def train_model():
 
-        for item in range(len(lst)):
-            for cord in range(3):
-                key = str(item) + "-" + cords[cord]
-                my_dict[key] = lst[item][cord]
+    to_labels = get_map_label(is_reverse=True)
+    num_classes = len(to_labels)
+    print(to_labels)
+    print(num_classes)
 
-        #print(my_dict)
-        df = pd.DataFrame(my_dict, index=[0])
-        #print(df)
-        return df
+    X_dataset = np.loadtxt(const.DATABASE_PATH, delimiter=',', dtype='float32', usecols=list(range(1, (21 * 3) + 1)))
+    y_dataset = np.loadtxt(const.DATABASE_PATH, delimiter=',', dtype='int32', usecols=(0))
+    RANDOM_SEED = 3
+    X_train, X_test, y_train, y_test = train_test_split(X_dataset, y_dataset, train_size=0.75, random_state=RANDOM_SEED)
 
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Input((21 * 3,)),
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.Dense(256, activation='relu'),
+        tf.keras.layers.Dropout(0.4),
+        tf.keras.layers.Dense(512, activation='relu'),
+        tf.keras.layers.Dense(num_classes, activation='softmax')
+    ])
 
-class FeaturesModel(nn.Module):
-    def __init__(self):
-        """
-        The constructor of MyNetwork class.
-        """
-        super().__init__()
+    # Model checkpoint callback
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(
+        model_path, verbose=1, save_weights_only=False)
+    # Callback for early stopping
+    es_callback = tf.keras.callbacks.EarlyStopping(patience=20, verbose=1)
 
-        self.fc1 = nn.Sequential(
-            nn.Linear(63, 2 * 63),
-            nn.ReLU(),
-            nn.Dropout(0.4)
-        )
-        self.fc2 = nn.Sequential(
-            nn.Linear(2 * 63, 36),
-            nn.ReLU(),
-            nn.Dropout(0.4)
-        )
+    # Model compilation
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy']
+    )
 
-
-    def forward(self, x):
-        """
-        Computes a forward pass for the network
-        :param x: the input to the neural network.
-        :return:
-        """
-        x = self.fc1(x)
-        x = self.fc2(x)
-
-        return F.log_softmax(x)
-
-def create_df():
-    keys = ["value"]
-    cords = ['x', 'y', 'z']
-
-    for item in range(21):
-        for cord in range(3):
-            key = str(item) + "-" + cords[cord]
-            keys.append(key)
-
-    #print(keys)
-
-    df = pd.DataFrame(columns=keys)
-    #print(df)
-    return df
+    model.fit(
+        X_train,
+        y_train,
+        epochs=1000,
+        batch_size=128,
+        validation_data=(X_test, y_test),
+        callbacks=[cp_callback, es_callback]
+    )
 
 
 def main():
-    detector = handDetector(True, 1, 0.2, 0.2)
-    raw_data_path = utilities.build_absolute_path(c.DATA_DIRECTORY + c.RAW_DATA_DIR)
-    raw_data = os.listdir(raw_data_path)
-    target_string = "hand5"
-    df = create_df()
+    pTime = 0
+    cTime = 0
+    cap = cv2.VideoCapture(0)
+    detector = LandmarkDetector()
+    key = ''
 
+    learning_rate = 1e-3
+    momentum = 0.5
 
-    for sub in raw_data:
-        if len(sub) != 1 or sub == ".DS_Store":
-            continue
-        folder_path = raw_data_path + sub + "/"
-        #print(sub)
-        for img in os.listdir(folder_path):
-            if target_string in img:
+    to_labels = get_map_label(is_reverse=True)
+
+    # Loading the saved model
+    model = tf.keras.models.load_model(model_path)
+
+    cv2.namedWindow("hand", cv2.WINDOW_AUTOSIZE)
+
+    while key != "q":
+        success, img = cap.read()
+        img_copy = img.copy()
+        img_copy = detector.findHands(img_copy)
+
+        cTime = time.time()
+        fps = 1 / (cTime - pTime)
+        pTime = cTime
+
+        cv2.putText(img, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
+
+        cv2.imshow("Image", img_copy)
+        key = cv2.waitKey(1)
+        if key == 27:  # Esc key to stop
+            break
+        if key == 32:  # space key
+            cv2.imwrite("test.png", detector.crop_hands(img))
+        if key == 104 and success:  # h key
+            vect = np.array(detector.get_points(img, is_flatten=True))
+            print(vect)
+            print(vect.shape)
+            predict_result = model.predict(np.array([vect]))
+            # print(np.squeeze(predict_result))
+            print("guess")
+            print(np.argmax(np.squeeze(predict_result)))
+            print(to_labels.get(np.argmax(np.squeeze(predict_result))))
+
+class UpdateModelThread(Thread):
+    def __init__(self):
+        # execute the base constructor
+        Thread.__init__(self)
+        # set a default value
+        self.value = None
+
+    # function executed in a new thread
+    def run(self):
+        # block for a moment
+        train_model()
+        # store data in an instance variable
+        self.value = tf.keras.models.load_model(model_path)
+        print("Updated Model")
+
+def test():
+
+    t = UpdateModelThread()
+
+    pTime = 0
+    cTime = 0
+    cap = cv2.VideoCapture(0)
+    detector = LandmarkDetector()
+    label = ''
+    key = ''
+    interval = 1
+
+    img_count = 0
+
+    cv2.namedWindow("hand", cv2.WINDOW_AUTOSIZE)
+    to_labels = get_map_label(is_reverse=True)
+
+    # Loading the saved model
+    model = tf.keras.models.load_model(model_path)
+
+    is_collecting = False
+
+    while key != "q":
+        success, img = cap.read()
+        img_copy = img.copy()
+        img_copy = detector.findHands(img_copy)
+
+        cTime = time.time()
+        fps = 1 / (cTime - pTime)
+        pTime = cTime
+
+        cv2.putText(img_copy, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
+
+        if is_collecting:
+            print(img_count)
+            pts = detector.get_points(img, is_flatten=True)
+            # check for empty values
+            if len(pts) == 0 or pts is None:
                 continue
-            img_path = folder_path + img
-            #print(folder_path + img)
-            img = cv2.imread(img_path)
-            lst = detector.get_points(img)
-            if len(lst) == 0:
-                continue
+            img_count += 1
+            append_data(label, pts)
+            if img_count % 2 == 1:
+                img_copy = cv2.bitwise_not(img_copy)
 
-            entry = detector.get_df_entry(lst, ord(sub))
-            df = pd.concat([df, entry], ignore_index=True)
-
-    df.to_csv("data.csv", index=False)
-
-
-def main2():
-    csv = pd.read_csv("data.csv")
+            if img_count == const.TOTAL_IMAGES:
+                is_collecting = False
+                interval = 1
+                t.run()
+                model = t.value
 
 
-    # Plotting the number of data in each label as a countplot.
-    plt.figure(figsize=(20, 20))
-    sns.countplot(x="value", data=csv)
-    plt.show()
+        cv2.imshow("Image", img_copy)
+        key = cv2.waitKey(interval)
+        if key == 27:  # Esc key to stop
+            break
+        if key == 104 and success:  # h key
+            vect = np.array(detector.get_points(img, is_flatten=True))
+            # print(vect)
+            # print(vect.shape)
+            predict_result = model.predict(np.array([vect]))
+            # print(np.squeeze(predict_result))
+            print("guess")
+            print(np.argmax(np.squeeze(predict_result)))
+            print(to_labels.get(np.argmax(np.squeeze(predict_result))))
+        if key == 32 and success:   # space button
+            # toggle collecting
+            is_collecting = not is_collecting
+
+            if is_collecting:
+                label = input("Enter sign for data collection: ")
+                interval = 50
+                img_count = 0
+
 
 
 
 
 if __name__ == '__main__':
-    main()
-    main2()
+    test()

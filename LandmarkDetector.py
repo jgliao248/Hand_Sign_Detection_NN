@@ -55,7 +55,7 @@ class LandmarkDetector():
                 if draw:
                     self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
 
-                # self.mpDraw.draw_detection(img, self.results.multi_hand_landmarks)
+                # print(handLms)
                 pts = self.get_bbox_coordinates(handLms, img.shape)
 
                 cv2.rectangle(img, [pts[0], pts[1]], [pts[2], pts[3]], (255, 0, 255))
@@ -86,7 +86,7 @@ class LandmarkDetector():
         else:
             return None
 
-    def get_points(self, img, handNo=0):
+    def get_points(self, img, handNo=0, is_flatten=False):
         """
         Given an image and the number of hands in the image, this function will check for a hand detection and return
         a list of landmark points. There are 21 landmark points from 0 to 20. The landmark points are normalized and
@@ -99,14 +99,41 @@ class LandmarkDetector():
         lst = []
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         self.results = self.hands.process(imgRGB)
-
+        norm = 0
         if self.results.multi_hand_landmarks:
             myHand = self.results.multi_hand_landmarks[handNo]
             for id, lm in enumerate(myHand.landmark):
+                if id == 0:
+                    ref_pt = lm
+
                 #print(id)
                 #print(lm)
-                lst.append((lm.x, lm.y, lm.z))
-        return lst
+                pt = [lm.x - ref_pt.x, lm.y - ref_pt.y, lm.z - ref_pt.z]
+
+                norm = max(norm, abs(min(pt)), max(pt))
+
+                lst = lst + pt
+            lst = [x / norm for x in lst] # final step of normalization
+        if is_flatten:
+            return lst
+
+        nested = []
+        j = 0
+        for i in range(len(lst)):
+            if j == 0:
+                pt = [lst[i]]
+                j += 1
+                continue
+            pt.append(lst[i])
+
+            if j == 2:
+                nested.append(pt)
+                j = 0
+                continue
+
+            j += 1
+
+        return nested
 
 
     def get_bbox_coordinates(self, handLadmark, image_shape):
