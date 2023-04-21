@@ -85,50 +85,6 @@ def train_model():
     )
 
 
-def main():
-    pTime = 0
-    cTime = 0
-    cap = cv2.VideoCapture(0)
-    detector = LandmarkDetector()
-    key = ''
-
-    learning_rate = 1e-3
-    momentum = 0.5
-
-    to_labels = get_map_label(is_reverse=True)
-
-    # Loading the saved model
-    model = tf.keras.models.load_model(model_path)
-
-    cv2.namedWindow("hand", cv2.WINDOW_AUTOSIZE)
-
-    while key != "q":
-        success, img = cap.read()
-        img_copy = img.copy()
-        img_copy = detector.findHands(img_copy)
-
-        cTime = time.time()
-        fps = 1 / (cTime - pTime)
-        pTime = cTime
-
-        cv2.putText(img, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
-
-        cv2.imshow("Image", img_copy)
-        key = cv2.waitKey(1)
-        if key == 27:  # Esc key to stop
-            break
-        if key == 32:  # space key
-            cv2.imwrite("test.png", detector.crop_hands(img))
-        if key == 104 and success:  # h key
-            vect = np.array(detector.get_points(img, is_flatten=True))
-            print(vect)
-            print(vect.shape)
-            predict_result = model.predict(np.array([vect]))
-            # print(np.squeeze(predict_result))
-            print("guess")
-            print(np.argmax(np.squeeze(predict_result)))
-            print(to_labels.get(np.argmax(np.squeeze(predict_result))))
-
 class UpdateModelThread(Thread):
     def __init__(self):
         # execute the base constructor
@@ -144,7 +100,8 @@ class UpdateModelThread(Thread):
         self.value = tf.keras.models.load_model(model_path)
         print("Updated Model")
 
-def test():
+
+def main():
 
     t = UpdateModelThread()
 
@@ -165,15 +122,26 @@ def test():
     model = tf.keras.models.load_model(model_path)
 
     is_collecting = False
+    is_predicting = False
 
     while key != "q":
         success, img = cap.read()
         img_copy = img.copy()
-        img_copy = detector.findHands(img_copy)
+        img_copy = detector.find_hands(img_copy)
 
         cTime = time.time()
         fps = 1 / (cTime - pTime)
         pTime = cTime
+
+        cv2.putText(img_copy, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
+
+        if is_predicting and success:
+            vect = np.array(detector.get_points(img, is_flatten=True))
+            if len(vect) != 0:
+                predict_results = np.squeeze(model.predict(np.array([vect])))
+                best_match_idx = np.argmax(predict_results)
+                prediction_str = "Prediction is " + to_labels.get(best_match_idx) + " at " + str(round(predict_results[best_match_idx] * 100, 2)) + "%"
+                cv2.putText(img_copy, prediction_str, (10, 110), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
 
         cv2.putText(img_copy, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
 
@@ -199,15 +167,17 @@ def test():
         key = cv2.waitKey(interval)
         if key == 27:  # Esc key to stop
             break
-        if key == 104 and success:  # h key
-            vect = np.array(detector.get_points(img, is_flatten=True))
-            # print(vect)
-            # print(vect.shape)
-            predict_result = model.predict(np.array([vect]))
-            # print(np.squeeze(predict_result))
-            print("guess")
-            print(np.argmax(np.squeeze(predict_result)))
-            print(to_labels.get(np.argmax(np.squeeze(predict_result))))
+        # if key == 104 and success:  # h key
+        #     # vect = np.array(detector.get_points(img, is_flatten=True))
+        #     # # print(vect)
+        #     # # print(vect.shape)
+        #     # predict_result = model.predict(np.array([vect]))
+        #     # # print(np.squeeze(predict_result))
+        #     # print("guess")
+        #     # print(np.squeeze(predict_result))
+        #     # print(to_labels.get(np.argmax(np.squeeze(predict_result))))
+        if key == 104:  # h key
+            is_predicting = not is_predicting
         if key == 32 and success:   # space button
             # toggle collecting
             is_collecting = not is_collecting
@@ -222,4 +192,4 @@ def test():
 
 
 if __name__ == '__main__':
-    test()
+    main()

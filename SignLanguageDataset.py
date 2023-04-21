@@ -7,7 +7,7 @@ import util.utilities as util
 import constants as const
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 DATA_DIRECTORY_PATH = util.build_absolute_path(const.DATA_DIRECTORY)
 TRAIN_PATH = util.build_absolute_path(const.DATA_DIRECTORY + const.TRAIN_DATA_FILE)
@@ -129,14 +129,14 @@ def create_labels_dict():
     return dict(zip(keys, values))
 
 
-def main():
-    #print(create_labels_dict())
-    dataset = SignLanguageDataset(TRAIN_PATH, DATA_DIRECTORY_PATH)
-    #dataset.show_images()
-    data = torch.utils.data.DataLoader(dataset, batch_size=128, num_workers=4, shuffle=True)
-    x_train, y = next(iter(data))
-    print(x_train.shape)
-    print(y.shape)
-
-if __name__ == '__main__':
-    main()
+# def main():
+#     #print(create_labels_dict())
+#     dataset = SignLanguageDataset(TRAIN_PATH, DATA_DIRECTORY_PATH)
+#     #dataset.show_images()
+#     data = torch.utils.data.DataLoader(dataset, batch_size=128, num_workers=4, shuffle=True)
+#     x_train, y = next(iter(data))
+#     print(x_train.shape)
+#     print(y.shape)
+#
+# if __name__ == '__main__':
+#     main()

@@ -1,35 +1,25 @@
-import os
-
 import cv2
 import mediapipe as mp
-import time
-import numpy as np
-import pandas as pd
-import torch
-from matplotlib import pyplot as plt
-
-
-import SignLanguageDataset as data
-from Network.network import MyNetwork
 
 import constants as c
-from util import utilities
-import seaborn as sns
-
-from torch import nn
-import torch.nn.functional as F
-import torch.optim as optim
 
 
-
-
-
-class LandmarkDetector():
-    def __init__(self, mode=False, maxHands=2, detectionCon=0.5, trackCon=0.5):
+class LandmarkDetector:
+    """
+    Wrapper class that handles retrieving landmarks through the mediapipe library.
+    """
+    def __init__(self, mode=False, max_hands=2, detection_confidence=0.5, track_confidence=0.5):
+        """
+        Constructor for the LandmarkDetector class
+        :param mode: False for video feed, true for image feed
+        :param max_hands: max number of hands to run detection
+        :param detection_confidence: confidence in a hand identified (0 to 1)
+        :param track_confidence: confidence in a hand identified (0 to 1)
+        """
         self.mode = mode
-        self.maxHands = maxHands
-        self.detectionCon = detectionCon
-        self.trackCon = trackCon
+        self.maxHands = max_hands
+        self.detectionCon = detection_confidence
+        self.trackCon = track_confidence
 
         self.mpHands = mp.solutions.hands
         self.hands = self.mpHands.Hands(static_image_mode=self.mode,
@@ -38,7 +28,7 @@ class LandmarkDetector():
                                         min_tracking_confidence=self.trackCon)
         self.mpDraw = mp.solutions.drawing_utils
 
-    def findHands(self, img, draw=True):
+    def find_hands(self, img, draw=True):
         """
         This function attempts to find hands in the given image. It will return an image with a bounded box around it.
         If draw is true, the landmarks will also be drawn.
@@ -48,7 +38,7 @@ class LandmarkDetector():
         """
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         self.results = self.hands.process(imgRGB)
-        #print(self.results.multi_hand_landmarks)
+        # print(self.results.multi_hand_landmarks)
 
         if self.results.multi_hand_landmarks:
             for handLms in self.results.multi_hand_landmarks:
@@ -61,7 +51,6 @@ class LandmarkDetector():
                 cv2.rectangle(img, [pts[0], pts[1]], [pts[2], pts[3]], (255, 0, 255))
 
         return img
-
 
     def crop_hands(self, img):
         """
@@ -106,15 +95,17 @@ class LandmarkDetector():
                 if id == 0:
                     ref_pt = lm
 
-                #print(id)
-                #print(lm)
+                # print(id)
+                # print(lm)
                 pt = [lm.x - ref_pt.x, lm.y - ref_pt.y, lm.z - ref_pt.z]
 
                 norm = max(norm, abs(min(pt)), max(pt))
 
                 lst = lst + pt
-            lst = [x / norm for x in lst] # final step of normalization
+            lst = [x / norm for x in lst]  # final step of normalization
         if is_flatten:
+            return lst
+        if (len(lst) == 0):
             return lst
 
         nested = []
@@ -135,22 +126,19 @@ class LandmarkDetector():
 
         return nested
 
-
-    def get_bbox_coordinates(self, handLadmark, image_shape):
+    def get_bbox_coordinates(self, hand_ladmark, image_shape):
         """
         Get bounding box coordinates for a hand landmark.
         Args:
-            handLadmark: A HandLandmark object.
+            hand_ladmark: A HandLandmark object.
             image_shape: A tuple of the form (height, width).
         Returns:
             A tuple of the form (xmin, ymin, xmax, ymax).
         """
         all_x, all_y = [], []  # store all x and y points in list
         for hnd in self.mpHands.HandLandmark:
-            all_x.append(int(handLadmark.landmark[hnd].x * image_shape[1]))  # multiply x by image width
-            all_y.append(int(handLadmark.landmark[hnd].y * image_shape[0]))  # multiply y by image height
+            all_x.append(int(hand_ladmark.landmark[hnd].x * image_shape[1]))  # multiply x by image width
+            all_y.append(int(hand_ladmark.landmark[hnd].y * image_shape[0]))  # multiply y by image height
 
         return min(all_x) - c.PADDING, min(all_y) - c.PADDING, max(all_x) + c.PADDING, max(all_y) + c.PADDING
         # return as (xmin, ymin, xmax, ymax)
-
-
